@@ -96,7 +96,23 @@ trait DeepBase extends Base with EmbeddedControls {
   def __ifThenElse[T:Manifest](cond: Rep[Rand[Boolean]], thenp: => Rep[Rand[T]], elsep: => Rep[Rand[T]]): Rep[Rand[T]]
   def infix_&&(x: Rep[Rand[Boolean]], y: Rep[Rand[Boolean]]): Rep[Rand[Boolean]]
   def infix_===[A](x: Rep[Rand[A]], y: Rep[Rand[A]]): Rep[Rand[Boolean]]
-  def infix_+(x: Rep[Rand[Int]], y: Rep[Rand[Int]]): Rep[Rand[Int]]
+  def infix_+[T:Numeric:Manifest](x: Rep[Rand[T]], y: Rep[Rand[T]]): Rep[Rand[T]]
+
+  class RepRandNum[T:Numeric:Manifest] extends Numeric[Rep[Rand[T]]] {
+    val t = implicitly[Numeric[T]]
+    type R = Rep[Rand[T]]
+    def compare(x: R, y: R): Int = ???
+    def fromInt(x: Int) = always(unit(t.fromInt(x)))
+    def minus(x: R, y: R): R = ???
+    def negate(x: R): R = ???
+    def plus(x: R, y: R) = infix_+(x, y)
+    def times(x: R, y: R): R = ???
+    def toDouble(x: R): Double = ???
+    def toFloat(x: R): Float = ???
+    def toInt(x: R): Int = ???
+    def toLong(x: R): Long = ???
+  }
+  implicit def repRandNum[T:Numeric:Manifest]: Numeric[Rep[Rand[T]]] = new RepRandNum[T]()
 }
 
 trait DeepBaseExp extends DeepBase with EffectExp {
@@ -108,7 +124,7 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   case class RandIfThenElse[T:Manifest](cond: Exp[Rand[Boolean]], thenp: Block[Rand[T]], elsep: Block[Rand[T]]) extends Def[Rand[T]]
   case class RandAnd(x: Rep[Rand[Boolean]], y: Rep[Rand[Boolean]]) extends Def[Rand[Boolean]]
   case class RandEq[A](x: Rep[Rand[A]], y: Rep[Rand[A]]) extends Def[Rand[Boolean]]
-  case class RandPlus(x: Rep[Rand[Int]], y: Rep[Rand[Int]]) extends Def[Rand[Int]]
+  case class RandPlus[T:Numeric:Manifest](x: Rep[Rand[T]], y: Rep[Rand[T]]) extends Def[Rand[T]]
 
   override def flip(p: Prob) = reflectEffect(Flip(p), Alloc())
   override def always[A:Manifest](e: Exp[A]) = Always(e)
@@ -121,7 +137,7 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   }
   override def infix_&&(x: Rep[Rand[Boolean]], y: Rep[Rand[Boolean]]): Rep[Rand[Boolean]] = RandAnd(x, y)
   override def infix_===[A](x: Rep[Rand[A]], y: Rep[Rand[A]]): Rep[Rand[Boolean]] = RandEq(x, y)
-  override def infix_+(x: Rep[Rand[Int]], y: Rep[Rand[Int]]): Rep[Rand[Int]] = RandPlus(x, y)
+  override def infix_+[T:Numeric:Manifest](x: Rep[Rand[T]], y: Rep[Rand[T]]): Rep[Rand[T]] = RandPlus(x, y)
 }
 
 trait ScalaGenDeepBase extends ScalaGenEffect {
@@ -191,4 +207,13 @@ object TestDeep extends App with DeepLang {
   }
   val fc4 = compile(f4)
   println(fc4())
+
+  val f5 = (_: Rep[Unit]) => {
+    val coins = for (i <- 0 until 10) yield flip()
+    val sum = coins.map(c => if (c) always(unit(1)) else always(unit(0))).sum
+    val allheads = sum === always(unit(10))
+    pp(allheads)
+  }
+  val fc5 = compile(f5)
+  println(fc5())
 }
