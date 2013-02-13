@@ -169,12 +169,12 @@ trait DeepBaseExp extends DeepBase with EffectExp {
     case RandAnd(x, y) => infix_&&(f(x), f(y)).asInstanceOf[Exp[A]]
     case RandEq(x, y) => infix_===(f(x), f(y)).asInstanceOf[Exp[A]]
     case e@RandPlus(x, y) => infix_+(f(x), f(y))(e.aev, mtype(e.mev)).asInstanceOf[Exp[A]]
-    case Reflect(Flip(p), u, es) =>
-        reflectMirrored(Reflect(Flip(p), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
+    case e@Reflect(Flip(p), u, es) => e
+         //reflectMirrored(Reflect(Flip(p), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
     case Flip(p) =>
         Flip(p).asInstanceOf[Def[A]]
-    case Reflect(Bernoulli(p, n), u, es) =>
-        reflectMirrored(Reflect(Bernoulli(p, n), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
+    case e@Reflect(Bernoulli(p, n), u, es) => e
+         //reflectMirrored(Reflect(Bernoulli(p, n), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
     case Bernoulli(p, n) =>
         Bernoulli(p, n).asInstanceOf[Def[A]]
     case Reflect(RandIfThenElse(c,a,b), u, es) =>
@@ -247,7 +247,9 @@ trait ProbTransformer extends RecursiveTransformer {
   val defUseMap : scala.collection.mutable.Map[Sym[_], Int] = new scala.collection.mutable.HashMap
   def addDefUse(sym: Sym[_]) = defUseMap.update(sym, defUseMap.getOrElse(sym, 0) + 1)
   def defUse(sym: Sym[_]): Int = defUseMap.getOrElse(sym, 0)
+  def decUse(sym: Sym[_]) { defUseMap.update(sym, defUse(sym)-1) }
   def defUse(e: Exp[_]): Int = defUse(e.asInstanceOf[Sym[_]])
+  def decUse(e: Exp[_]) { decUse(e.asInstanceOf[Sym[_]]) }
 
   def buildDefUse(body: Block[Any]): Unit = {
     defUseMap.clear()
@@ -273,6 +275,7 @@ trait ProbTransformer extends RecursiveTransformer {
   override def transformDef[A](lhs: Sym[A], rhs: Def[A]) = {
     rhs match {
       case Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), u, es) if defUse(lhs) < 2 && defUse(f) < 2 =>
+        decUse(f)
         bernoulliRewrites += 1
         Some(() => Reflect(Bernoulli(p, 1).asInstanceOf[Def[A]], u, es))
       case _ => None
@@ -289,6 +292,15 @@ trait DeepLang extends DeepLangExp with CompileScala { q =>
       r.replace("scala.virtualization.lms.prob.DeepBaseExp$Rand", "Rand")
     }
 
+    private var defUseMap : scala.collection.mutable.Map[Sym[_], Int] = _
+    private def defUse(sym: Sym[_]): Int = defUseMap.getOrElse(sym, 1 /* for sanity */)
+    override def emitValDef(sym: Sym[Any], rhs: String): Unit = {
+      sym match {
+	case _ if (defUse(sym) > 0) => super.emitValDef(sym, rhs)
+	case _ => ()
+      }
+    }
+
     override def emitSource[T : Manifest, R : Manifest](f: Exp[T] => Exp[R], className: String, stream: PrintWriter, obj: Option[String]): List[(Sym[Any], Any)] = {
       val s = fresh[T]
       val body = reifyBlock(f(s))
@@ -298,6 +310,7 @@ trait DeepLang extends DeepLangExp with CompileScala { q =>
       trans.buildDefUse(body)
       val transBody = trans.transformBlock(body)
       trans.printSummary()
+      defUseMap = trans.defUseMap
       emitSource(List(s), transBody, className, stream, obj)
     }
 
