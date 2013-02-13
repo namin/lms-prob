@@ -110,7 +110,7 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   case class RandEq[A](x: Rep[Rand[A]], y: Rep[Rand[A]]) extends Def[Rand[Boolean]]
   case class RandPlus(x: Rep[Rand[Int]], y: Rep[Rand[Int]]) extends Def[Rand[Int]]
 
-  override def flip(p: Prob) = reflectEffect(Flip(p))
+  override def flip(p: Prob) = reflectEffect(Flip(p), Alloc())
   override def always[A:Manifest](e: Exp[A]) = Always(e)
   override def pp[A:Manifest](e: Exp[Rand[A]]) = PP(e)
   override def __ifThenElse[T:Manifest](cond: Rep[Rand[Boolean]], thenp: => Rep[Rand[T]], elsep: => Rep[Rand[T]]): Rep[Rand[T]] = {
