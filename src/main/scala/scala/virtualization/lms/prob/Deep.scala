@@ -17,6 +17,11 @@ trait ProbIntf {
   def never = choice()
   def flip(p: Double): Rand[Boolean] = choice(true -> p, false -> (1-p))
   def uniform[A](xs: A*): Rand[A] = choice(xs.map((_,1.0)):_*)
+  def infix_**(base: Prob, exponent: Double): Prob = scala.math.pow(base, exponent)
+  def combinations(n: Int, k: Int): Int =
+    ((1 to n).product / ((1 to k).product * (1 to (n - k)).product))
+  def bernouilli(p: Prob, n: Int): Rand[Int] =
+    choice((for (k <- 0 to n) yield ((k -> combinations(n, k) * (p**k) * ((1-p)**(n-k))))):_*)
   def choice[A](xs: (A,Prob)*): Rand[A]
   def collapse[A](r: Rand[A]): List[(A,Prob)]
 }
@@ -91,6 +96,7 @@ trait DeepBase extends Base with EmbeddedControls {
   type Prob = Double
 
   def flip(p: Prob = 0.5): Rep[Rand[Boolean]]
+  def bernouilli(p: Prob, n: Int): Rep[Rand[Boolean]]
   def always[A:Manifest](e: Rep[A]): Rep[Rand[A]]
   def pp[A:Manifest](e: Rep[Rand[A]]): Rep[String]
   def __ifThenElse[T:Manifest](cond: Rep[Rand[Boolean]], thenp: => Rep[Rand[T]], elsep: => Rep[Rand[T]]): Rep[Rand[T]]
@@ -119,6 +125,7 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   class Rand[+A]
 
   case class Flip(p: Prob) extends Def[Rand[Boolean]]
+  case class Bernouilli(p: Prob, n: Int) extends Def[Rand[Boolean]]
   case class Always[A:Manifest](e: Exp[A]) extends Def[Rand[A]]
   case class PP[A:Manifest](e: Exp[Rand[A]]) extends Def[String]
   case class RandIfThenElse[T:Manifest](cond: Exp[Rand[Boolean]], thenp: Block[Rand[T]], elsep: Block[Rand[T]]) extends Def[Rand[T]]
@@ -127,6 +134,7 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   case class RandPlus[T:Numeric:Manifest](x: Rep[Rand[T]], y: Rep[Rand[T]]) extends Def[Rand[T]]
 
   override def flip(p: Prob) = reflectEffect(Flip(p), Alloc())
+  override def bernouilli(p: Prob, n: Int) = reflectEffect(Bernouilli(p, n), Alloc())
   override def always[A:Manifest](e: Exp[A]) = Always(e)
   override def pp[A:Manifest](e: Exp[Rand[A]]) = PP(e)
   override def __ifThenElse[T:Manifest](cond: Rep[Rand[Boolean]], thenp: => Rep[Rand[T]], elsep: => Rep[Rand[T]]): Rep[Rand[T]] = {
@@ -146,6 +154,7 @@ trait ScalaGenDeepBase extends ScalaGenEffect {
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Flip(p) => emitValDef(sym, "(flip(" + p + "))")
+    case Bernouilli(p, n) => emitValDef(sym, "(bernouilli(" + p + ", " + n + "))")
     case Always(e) => emitValDef(sym, "(always(" + quote(e) + "))")
     case PP(e) => emitValDef(sym, "(pp(" + quote(e) + "))")
     case RandIfThenElse(c,a,b) =>
@@ -216,4 +225,29 @@ object TestDeep extends App with DeepLang {
   }
   val fc5 = compile(f5)
   println(fc5())
+
+  val f6 = (_: Rep[Unit]) => {
+    val sum = bernouilli(0.5, 10)
+    val allheads = sum === always(unit(10))
+    pp(allheads)
+  }
+  val fc6 = compile(f6)
+  println(fc6())
+
+  val f7 = (_: Rep[Unit]) => {
+    val coins = for (i <- 0 until 10) yield flip()
+    val sum = coins.map(c => if (c) always(unit(1)) else always(unit(0))).sum
+    val allheads = sum === always(unit(5))
+    pp(allheads)
+  }
+  val fc7 = compile(f7)
+  println(fc7())
+
+  val f8 = (_: Rep[Unit]) => {
+    val sum = bernouilli(0.5, 10)
+    val allheads = sum === always(unit(5))
+    pp(allheads)
+  }
+  val fc8 = compile(f8)
+  println(fc8())
 }
