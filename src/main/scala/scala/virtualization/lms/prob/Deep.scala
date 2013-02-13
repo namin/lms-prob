@@ -240,7 +240,7 @@ trait ScalaGenDeepLang extends ScalaGenDeepBase/* with ScalaGenIfThenElse with S
   val IR: DeepLangExp
 }
 
-trait ProbTransformer extends ForwardTransformer {
+trait ProbTransformer extends RecursiveTransformer {
   val IR: DeepLangExp
   import IR._
 
@@ -270,12 +270,13 @@ trait ProbTransformer extends ForwardTransformer {
     println("Bernoulli Rewrites: " + bernoulliRewrites)
   }
 
-  override def apply[A](e: Exp[A]): Exp[A] = e match {
-    case e@Def(Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), _, _)) if defUse(e) < 2 && defUse(f) < 2 =>
-      bernoulliRewrites += 1
-      bernoulli(p, 1).asInstanceOf[Exp[A]]
-    case _ =>
-      e
+  override def transformDef[A](lhs: Sym[A], rhs: Def[A]) = {
+    rhs match {
+      case Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), u, es) if defUse(lhs) < 2 && defUse(f) < 2 =>
+        bernoulliRewrites += 1
+        Some(() => Reflect(Bernoulli(p, 1).asInstanceOf[Def[A]], u, es))
+      case _ => None
+    }
   }
 }
 
