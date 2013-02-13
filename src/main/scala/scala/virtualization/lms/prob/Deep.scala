@@ -1,6 +1,7 @@
 package scala.virtualization.lms.prob
 
 import scala.virtualization.lms.common._
+import scala.reflect.SourceContext
 
 trait ProbIntf {
   type Prob = Double
@@ -99,32 +100,47 @@ trait DeepBase extends Base with EmbeddedControls {
   def infix_+(x: Rep[Rand[Int]], y: Rep[Rand[Int]]): Rep[Rand[Int]]
 }
 
-trait DeepBaseExp extends DeepBase with EffectExp {
+trait DeepBaseExp extends DeepBase with BaseExp {
   class Rand[+A]
+
+  override protected implicit def toAtom[T:Manifest](d: Def[T])(implicit pos: SourceContext): Exp[T] = {
+    d match {
+      case Flip(_) =>
+	val s = fresh[T](List(pos))
+        createDefinition(s, d)
+        s
+      case _ => super.toAtom(d)
+    }
+  }
 
   case class Flip(p: Prob) extends Def[Rand[Boolean]]
   case class Always[A:Manifest](e: Exp[A]) extends Def[Rand[A]]
   case class PP[A:Manifest](e: Exp[Rand[A]]) extends Def[String]
-  case class RandIfThenElse[T:Manifest](cond: Exp[Rand[Boolean]], thenp: Block[Rand[T]], elsep: Block[Rand[T]]) extends Def[Rand[T]]
+  case class RandIfThenElse[T:Manifest](cond: Exp[Rand[Boolean]], thenp: Rep[Rand[T]], elsep: Rep[Rand[T]]) extends Def[Rand[T]]
   case class RandAnd(x: Rep[Rand[Boolean]], y: Rep[Rand[Boolean]]) extends Def[Rand[Boolean]]
   case class RandEq[A](x: Rep[Rand[A]], y: Rep[Rand[A]]) extends Def[Rand[Boolean]]
   case class RandPlus(x: Rep[Rand[Int]], y: Rep[Rand[Int]]) extends Def[Rand[Int]]
 
-  override def flip(p: Prob) = reflectEffect(Flip(p))
+  override def flip(p: Prob) = Flip(p)
   override def always[A:Manifest](e: Exp[A]) = Always(e)
   override def pp[A:Manifest](e: Exp[Rand[A]]) = PP(e)
-  override def __ifThenElse[T:Manifest](cond: Rep[Rand[Boolean]], thenp: => Rep[Rand[T]], elsep: => Rep[Rand[T]]): Rep[Rand[T]] = {
-    val a = reifyEffectsHere(thenp)
-    val b = reifyEffectsHere(elsep)
-
-    RandIfThenElse(cond,a,b)
-  }
+  override def __ifThenElse[T:Manifest](cond: Rep[Rand[Boolean]], thenp: => Rep[Rand[T]], elsep: => Rep[Rand[T]]): Rep[Rand[T]] = RandIfThenElse(cond, thenp, elsep)
   override def infix_&&(x: Rep[Rand[Boolean]], y: Rep[Rand[Boolean]]): Rep[Rand[Boolean]] = RandAnd(x, y)
   override def infix_===[A](x: Rep[Rand[A]], y: Rep[Rand[A]]): Rep[Rand[Boolean]] = RandEq(x, y)
   override def infix_+(x: Rep[Rand[Int]], y: Rep[Rand[Int]]): Rep[Rand[Int]] = RandPlus(x, y)
 }
 
-trait ScalaGenDeepBase extends ScalaGenEffect {
+trait DeepBaseExpOpt extends DeepBaseExp {
+  override def infix_===[A](x: Rep[Rand[A]], y: Rep[Rand[A]]): Rep[Rand[Boolean]] = {
+    x match {
+      case Def(RandIfThenElse(Def(Flip(p)), Def(a), Def(b))) =>
+      println("x is an " + List(p, a, b))
+    }
+    super.infix_===(x, y)
+  }
+}
+
+trait ScalaGenDeepBase extends ScalaGenBase {
   val IR: DeepBaseExp
   import IR._
 
@@ -134,12 +150,8 @@ trait ScalaGenDeepBase extends ScalaGenEffect {
     case PP(e) => emitValDef(sym, "(pp(" + quote(e) + "))")
     case RandIfThenElse(c,a,b) =>
       stream.println("val " + quote(sym) + " = " + quote(c) + ".flatMap{ c => c match {")
-      stream.println("case true =>")
-      emitBlock(a)
-      stream.println(quote(getBlockResult(a)))
-      stream.println("case false =>")
-      emitBlock(b)
-      stream.println(quote(getBlockResult(b)))
+      stream.println("case true =>" + quote(a))
+      stream.println("case false =>" + quote(b))
       stream.println("}}")
     case RandAnd(x, y) => emitValDef(sym, quote(x) + " && " + quote(y))
     case RandEq(x, y) => emitValDef(sym, quote(x) + " === " + quote(y))
@@ -149,12 +161,12 @@ trait ScalaGenDeepBase extends ScalaGenEffect {
 }
 
 trait DeepLangBase extends DeepBase/* with IfThenElse with NumericOps with BooleanOps with Equal with ListOps with TupleOps with LiftNumeric with LiftBoolean*/
-trait DeepLangExp extends DeepLangBase with DeepBaseExp/* with IfThenElseExp with NumericOpsExp with BooleanOpsExp with EqualExp with ListOpsExp with TupleOpsExp*/
+trait DeepLangExp extends DeepLangBase with DeepBaseExp with DeepBaseExpOpt /* with IfThenElseExp with NumericOpsExp with BooleanOpsExp with EqualExp with ListOpsExp with TupleOpsExp*/
 trait ScalaGenDeepLang extends ScalaGenDeepBase/* with ScalaGenIfThenElse with ScalaGenNumericOps with ScalaGenBooleanOps with ScalaGenEqual with ScalaGenListOps with ScalaGenTupleOps*/ {
   val IR: DeepLangExp
 }
-trait DeepLang extends DeepLangExp with CompileScala { q =>
-  object codegen extends ScalaGenDeepLang {
+trait DeepLang extends DeepLangExp with EffectExp with CompileScala { q =>
+  object codegen extends ScalaGenDeepLang with ScalaGenEffect {
     val IR: q.type = q
 
     override def remap[A](m: Manifest[A]): String = {
