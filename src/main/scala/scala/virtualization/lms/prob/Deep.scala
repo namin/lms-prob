@@ -2,6 +2,7 @@ package scala.virtualization.lms.prob
 
 import scala.virtualization.lms.common._
 import scala.reflect.SourceContext
+import java.io.PrintWriter
 
 trait ProbIntf {
   type Prob = Double
@@ -132,7 +133,10 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   case class RandIfThenElse[T:Manifest](cond: Exp[Rand[Boolean]], thenp: Block[Rand[T]], elsep: Block[Rand[T]]) extends Def[Rand[T]]
   case class RandAnd(x: Rep[Rand[Boolean]], y: Rep[Rand[Boolean]]) extends Def[Rand[Boolean]]
   case class RandEq[A](x: Rep[Rand[A]], y: Rep[Rand[A]]) extends Def[Rand[Boolean]]
-  case class RandPlus[T:Numeric:Manifest](x: Rep[Rand[T]], y: Rep[Rand[T]]) extends Def[Rand[T]]
+  case class RandPlus[T:Numeric:Manifest](x: Rep[Rand[T]], y: Rep[Rand[T]]) extends Def[Rand[T]] {
+    def mev = manifest[T]
+    def aev = implicitly[Numeric[T]]
+  }
 
   override def flip(p: Prob) = reflectEffect(Flip(p), Alloc())
   override def bernouilli(p: Prob, n: Int) = reflectEffect(Bernouilli(p, n), Alloc())
@@ -149,20 +153,34 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   override def infix_+[T:Numeric:Manifest](x: Rep[Rand[T]], y: Rep[Rand[T]]): Rep[Rand[T]] = RandPlus(x, y)
 
   override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Def[A] = e match {
+    case Flip(p) => Flip(p).asInstanceOf[Def[A]]
+    case Bernouilli(p, n) => Bernouilli(p, n).asInstanceOf[Def[A]]
     case RandIfThenElse(c,a,b) => RandIfThenElse(f(c),f(a),f(b)).asInstanceOf[Def[A]]
+    case Always(e) => Always(f(e)).asInstanceOf[Def[A]]
+    case PP(e) => PP(f(e)).asInstanceOf[Def[A]]
+    case RandAnd(x, y) => RandAnd(f(x), f(y)).asInstanceOf[Def[A]]
+    case RandEq(x, y) => RandEq(f(x), f(y)).asInstanceOf[Def[A]]
+    case e@RandPlus(x, y) => RandPlus(f(x), f(y))(e.aev, mtype(e.mev)).asInstanceOf[Def[A]]
     case _ => super.mirrorDef(e,f)
   }
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
+    case Always(e) => always(f(e)).asInstanceOf[Exp[A]]
+    case PP(e) => pp(f(e)).asInstanceOf[Exp[A]]
+    case RandAnd(x, y) => infix_&&(f(x), f(y)).asInstanceOf[Exp[A]]
+    case RandEq(x, y) => infix_===(f(x), f(y)).asInstanceOf[Exp[A]]
+    case e@RandPlus(x, y) => infix_+(f(x), f(y))(e.aev, mtype(e.mev)).asInstanceOf[Exp[A]]
+    case Reflect(Flip(p), u, es) =>
+        reflectMirrored(Reflect(Flip(p), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
+    case Flip(p) =>
+        Flip(p).asInstanceOf[Def[A]]
+    case Reflect(Bernouilli(p, n), u, es) =>
+        reflectMirrored(Reflect(Bernouilli(p, n), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
+    case Bernouilli(p, n) =>
+        Bernouilli(p, n).asInstanceOf[Def[A]]
     case Reflect(RandIfThenElse(c,a,b), u, es) =>
-      if (f.hasContext)
-        __ifThenElse(f(c),f.reflectBlock(a),f.reflectBlock(b)).asInstanceOf[Exp[A]]
-      else
-        reflectMirrored(Reflect(RandIfThenElse(f(c),f(a),f(b)).asInstanceOf[Def[A]], mapOver(f,u), f(es)))(mtype(manifest[A]))
+        reflectMirrored(Reflect(RandIfThenElse(f(c),f(a),f(b)), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
     case RandIfThenElse(c,a,b) =>
-      if (f.hasContext)
-        __ifThenElse(f(c),f.reflectBlock(a),f.reflectBlock(b)).asInstanceOf[Exp[A]]
-      else
-        RandIfThenElse(f(c),f(a),f(b)).asInstanceOf[Def[A]] // FIXME: should apply pattern rewrites (ie call smart constructor)
+        RandIfThenElse(f(c),f(a),f(b)).asInstanceOf[Def[A]]
     case _ => super.mirror(e,f)
   }
   override def aliasSyms(e: Any): List[Sym[Any]] = e match {
@@ -217,10 +235,18 @@ trait ScalaGenDeepBase extends ScalaGenEffect {
 }
 
 trait DeepLangBase extends DeepBase/* with IfThenElse with NumericOps with BooleanOps with Equal with ListOps with TupleOps with LiftNumeric with LiftBoolean*/
-trait DeepLangExp extends DeepLangBase with DeepBaseExp/* with IfThenElseExp with NumericOpsExp with BooleanOpsExp with EqualExp with ListOpsExp with TupleOpsExp*/
+trait DeepLangExp extends DeepLangBase with DeepBaseExp with BaseFatExp /* with IfThenElseExp with NumericOpsExp with BooleanOpsExp with EqualExp with ListOpsExp with TupleOpsExp*/
 trait ScalaGenDeepLang extends ScalaGenDeepBase/* with ScalaGenIfThenElse with ScalaGenNumericOps with ScalaGenBooleanOps with ScalaGenEqual with ScalaGenListOps with ScalaGenTupleOps*/ {
   val IR: DeepLangExp
 }
+
+trait ProbTransformer extends ForwardTransformer {
+  val IR: DeepLangExp
+  import IR._
+
+  override def apply[A](x: Exp[A]): Exp[A] = x
+}
+
 trait DeepLang extends DeepLangExp with CompileScala { q =>
   object codegen extends ScalaGenDeepLang {
     val IR: q.type = q
@@ -229,6 +255,17 @@ trait DeepLang extends DeepLangExp with CompileScala { q =>
       val r = super.remap(m)
       r.replace("scala.virtualization.lms.prob.DeepBaseExp$Rand", "Rand")
     }
+
+    override def emitSource[T : Manifest, R : Manifest](f: Exp[T] => Exp[R], className: String, stream: PrintWriter, obj: Option[String]): List[(Sym[Any], Any)] = {
+      val s = fresh[T]
+      val body = reifyBlock(f(s))
+      val trans = new ProbTransformer {
+	val IR: q.type = q
+      }
+      val transBody = trans.transformBlock(body)
+      emitSource(List(s), transBody, className, stream, obj)
+    }
+
   }
   override def compile[A,B](f: Exp[A] => Exp[B])(implicit mA: Manifest[A], mB: Manifest[B]): A=>B = {
     compile(f, Some("scala.virtualization.lms.prob.ProbCore"))(mA, mB)
