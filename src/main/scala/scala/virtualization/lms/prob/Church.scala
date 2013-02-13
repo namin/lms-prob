@@ -24,9 +24,9 @@ trait ScalaGenChurchBase extends ScalaGenEffect {
   }
 }
 
-trait ChurchLangBase extends ChurchBase with IfThenElse with NumericOps with ListOps with TupleOps
-trait ChurchLangExp extends ChurchBaseExp with IfThenElseExp with NumericOpsExp with ListOpsExp with TupleOpsExp
-trait ScalaGenChurchLang extends ScalaGenChurchBase with ScalaGenIfThenElse with ScalaGenNumericOps with ScalaGenListOps with ScalaGenTupleOps {
+trait ChurchLangBase extends ChurchBase with IfThenElse with NumericOps with BooleanOps with Equal with ListOps with TupleOps with LiftNumeric with LiftBoolean
+trait ChurchLangExp extends ChurchLangBase with ChurchBaseExp with IfThenElseExp with NumericOpsExp with BooleanOpsExp with EqualExp with ListOpsExp with TupleOpsExp
+trait ScalaGenChurchLang extends ScalaGenChurchBase with ScalaGenIfThenElse with ScalaGenNumericOps with ScalaGenBooleanOps with ScalaGenEqual with ScalaGenListOps with ScalaGenTupleOps {
   val IR: ChurchLangExp
 
   override def utilRandom: String = "(new scala.util.Random())"
@@ -69,4 +69,21 @@ object TestChurch extends App with ChurchLang {
   println("1 repeated 10:" + hist(repeat(10, q1)))
   println("2 repeated 10:" + hist(repeat(10, q1)))
   println("repeated 1000:" + hist(repeat(1000, q1)))
+
+  println("q2")
+  val q2 = query(
+    (_ : Rep[Unit]) => {
+      val a = if (flip()) 1 else 0
+      val b = if (flip()) 1 else 0
+      val c = if (flip()) 1 else 0
+      val d = a+b+c
+
+      (a, b, c, d)
+    },
+
+    (r : Rep[(Int, Int, Int, Int)]) => r._1,
+
+    (r: Rep[(Int, Int, Int, Int)]) => r._4 == 3)
+  println(q2())
+  println(hist(repeat(10, q2)))
 }
