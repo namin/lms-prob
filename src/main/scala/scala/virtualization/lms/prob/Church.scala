@@ -53,6 +53,9 @@ trait ChurchLang extends ChurchLangExp with CompileScala { q =>
   def repeat[R](n: Int, f: Unit => R): List[R] = {
     (for (i <- 0 until n) yield f()).toList
   }
+  def hist[R](xs: List[R]): Map[R, Int] = {
+    xs.groupBy(x => x).mapValues(_.size)
+  }
 }
 
 object TestChurch extends App with ChurchLang {
@@ -63,6 +66,7 @@ object TestChurch extends App with ChurchLang {
     (x: Rep[Boolean]) => unit(true))
   println("1:" + q1())
   println("2:" + q1())
-  println("1 repeated 10:" + repeat(10, q1))
-  println("2 repeated 10:" + repeat(10, q1))
+  println("1 repeated 10:" + hist(repeat(10, q1)))
+  println("2 repeated 10:" + hist(repeat(10, q1)))
+  println("repeated 1000:" + hist(repeat(1000, q1)))
 }
