@@ -98,7 +98,7 @@ trait DeepBase extends Base with EmbeddedControls {
   type Prob = Double
 
   def flip(p: Prob = 0.5): Rep[Rand[Boolean]]
-  def bernoulli(p: Prob, n: Int): Rep[Rand[Boolean]]
+  def bernoulli(p: Prob, n: Int): Rep[Rand[Int]]
   def always[A:Manifest](e: Rep[A]): Rep[Rand[A]]
   def pp[A:Manifest](e: Rep[Rand[A]]): Rep[String]
   def __ifThenElse[T:Manifest](cond: Rep[Rand[Boolean]], thenp: => Rep[Rand[T]], elsep: => Rep[Rand[T]]): Rep[Rand[T]]
@@ -127,7 +127,7 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   class Rand[+A]
 
   case class Flip(p: Prob) extends Def[Rand[Boolean]]
-  case class Bernoulli(p: Prob, n: Int) extends Def[Rand[Boolean]]
+  case class Bernoulli(p: Prob, n: Int) extends Def[Rand[Int]]
   case class Always[A:Manifest](e: Exp[A]) extends Def[Rand[A]]
   case class PP[A:Manifest](e: Exp[Rand[A]]) extends Def[String]
   case class RandIfThenElse[T:Manifest](cond: Exp[Rand[Boolean]], thenp: Block[Rand[T]], elsep: Block[Rand[T]]) extends Def[Rand[T]]
@@ -244,7 +244,39 @@ trait ProbTransformer extends ForwardTransformer {
   val IR: DeepLangExp
   import IR._
 
-  override def apply[A](x: Exp[A]): Exp[A] = x
+  val defUseMap : scala.collection.mutable.Map[Sym[_], Int] = new scala.collection.mutable.HashMap
+  def addDefUse(sym: Sym[_]) = defUseMap.update(sym, defUseMap.getOrElse(sym, 0) + 1)
+  def defUse(sym: Sym[_]): Int = defUseMap.getOrElse(sym, 0)
+  def defUse(e: Exp[_]): Int = defUse(e.asInstanceOf[Sym[_]])
+
+  def buildDefUse(body: Block[Any]): Unit = {
+    defUseMap.clear()
+
+    refSyms(getBlockResult(body)).foreach(addDefUse)
+    for (TP(_, rhs) <- buildScheduleForResult(body, false /*unsorted*/)) {
+      for (sym <- refSyms(rhs)) {
+	addDefUse(sym)
+      }
+    }
+  }
+
+  def refSyms(e: Any): List[Sym[Any]] = e match {
+    case Reify(x, u, es) => readSyms(x)
+    case _ => readSyms(e)
+  }
+
+  var bernoulliRewrites = 0
+  def printSummary() = {
+    println("Bernoulli Rewrites: " + bernoulliRewrites)
+  }
+
+  override def apply[A](e: Exp[A]): Exp[A] = e match {
+    case e@Def(Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), _, _)) if defUse(e) < 2 && defUse(f) < 2 =>
+      bernoulliRewrites += 1
+      bernoulli(p, 1).asInstanceOf[Exp[A]]
+    case _ =>
+      e
+  }
 }
 
 trait DeepLang extends DeepLangExp with CompileScala { q =>
@@ -262,7 +294,9 @@ trait DeepLang extends DeepLangExp with CompileScala { q =>
       val trans = new ProbTransformer {
 	val IR: q.type = q
       }
+      trans.buildDefUse(body)
       val transBody = trans.transformBlock(body)
+      trans.printSummary()
       emitSource(List(s), transBody, className, stream, obj)
     }
 
