@@ -35,25 +35,34 @@ trait ChurchLang extends ChurchLangExp with CompileScala { q =>
   object codegen extends ScalaGenChurchLang {
     val IR: q.type = q
   }
-  def query[P:Manifest,R:Manifest](program: Rep[Unit] => Rep[P], result: Rep[P] => Rep[R], predicate: Rep[P] => Rep[Boolean]): R = {
+  def query[P:Manifest,R:Manifest](program: Rep[Unit] => Rep[P], result: Rep[P] => Rep[R], predicate: Rep[P] => Rep[Boolean]): (Unit => R) = {
     val f_program = compile(program)
     val f_result = compile(result)
     val f_predicate = compile(predicate)
 
-    var p = f_program()
-    while (!f_predicate(p)) {
-      println("discarding " + p)
-      p = f_program()
+    val ret = (_: Unit) => {
+      var p = f_program()
+      while (!f_predicate(p)) {
+	println("discarding " + p)
+	p = f_program()
+      }
+      f_result(p)
     }
-    println("accepting " + p)
-    f_result(p)
+    ret
+  }
+  def repeat[R](n: Int, f: Unit => R): List[R] = {
+    (for (i <- 0 until n) yield f()).toList
   }
 }
 
 object TestChurch extends App with ChurchLang {
   println("q1")
-  println(query(
+  val q1 = query(
     (_ : Rep[Unit]) => flip(),
     (x: Rep[Boolean]) => x,
-    (x: Rep[Boolean]) => unit(true)))
+    (x: Rep[Boolean]) => unit(true))
+  println("1:" + q1())
+  println("2:" + q1())
+  println("1 repeated 10:" + repeat(10, q1))
+  println("2 repeated 10:" + repeat(10, q1))
 }
