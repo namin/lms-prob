@@ -22,7 +22,7 @@ trait ProbIntf {
   def infix_**(base: Prob, exponent: Double): Prob = scala.math.pow(base, exponent)
   def combinations(n: Int, k: Int): Int =
     ((1 to n).product / ((1 to k).product * (1 to (n - k)).product))
-  def bernouilli(p: Prob, n: Int): Rand[Int] =
+  def bernoulli(p: Prob, n: Int): Rand[Int] =
     choice((for (k <- 0 to n) yield ((k -> combinations(n, k) * (p**k) * ((1-p)**(n-k))))):_*)
   def choice[A](xs: (A,Prob)*): Rand[A]
   def collapse[A](r: Rand[A]): List[(A,Prob)]
@@ -98,7 +98,7 @@ trait DeepBase extends Base with EmbeddedControls {
   type Prob = Double
 
   def flip(p: Prob = 0.5): Rep[Rand[Boolean]]
-  def bernouilli(p: Prob, n: Int): Rep[Rand[Boolean]]
+  def bernoulli(p: Prob, n: Int): Rep[Rand[Boolean]]
   def always[A:Manifest](e: Rep[A]): Rep[Rand[A]]
   def pp[A:Manifest](e: Rep[Rand[A]]): Rep[String]
   def __ifThenElse[T:Manifest](cond: Rep[Rand[Boolean]], thenp: => Rep[Rand[T]], elsep: => Rep[Rand[T]]): Rep[Rand[T]]
@@ -127,7 +127,7 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   class Rand[+A]
 
   case class Flip(p: Prob) extends Def[Rand[Boolean]]
-  case class Bernouilli(p: Prob, n: Int) extends Def[Rand[Boolean]]
+  case class Bernoulli(p: Prob, n: Int) extends Def[Rand[Boolean]]
   case class Always[A:Manifest](e: Exp[A]) extends Def[Rand[A]]
   case class PP[A:Manifest](e: Exp[Rand[A]]) extends Def[String]
   case class RandIfThenElse[T:Manifest](cond: Exp[Rand[Boolean]], thenp: Block[Rand[T]], elsep: Block[Rand[T]]) extends Def[Rand[T]]
@@ -139,7 +139,7 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   }
 
   override def flip(p: Prob) = reflectEffect(Flip(p), Alloc())
-  override def bernouilli(p: Prob, n: Int) = reflectEffect(Bernouilli(p, n), Alloc())
+  override def bernoulli(p: Prob, n: Int) = reflectEffect(Bernoulli(p, n), Alloc())
   override def always[A:Manifest](e: Exp[A]) = Always(e)
   override def pp[A:Manifest](e: Exp[Rand[A]]) = PP(e)
   override def __ifThenElse[T:Manifest](cond: Rep[Rand[Boolean]], thenp: => Rep[Rand[T]], elsep: => Rep[Rand[T]]): Rep[Rand[T]] = {
@@ -154,7 +154,7 @@ trait DeepBaseExp extends DeepBase with EffectExp {
 
   override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Def[A] = e match {
     case Flip(p) => Flip(p).asInstanceOf[Def[A]]
-    case Bernouilli(p, n) => Bernouilli(p, n).asInstanceOf[Def[A]]
+    case Bernoulli(p, n) => Bernoulli(p, n).asInstanceOf[Def[A]]
     case RandIfThenElse(c,a,b) => RandIfThenElse(f(c),f(a),f(b)).asInstanceOf[Def[A]]
     case Always(e) => Always(f(e)).asInstanceOf[Def[A]]
     case PP(e) => PP(f(e)).asInstanceOf[Def[A]]
@@ -173,10 +173,10 @@ trait DeepBaseExp extends DeepBase with EffectExp {
         reflectMirrored(Reflect(Flip(p), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
     case Flip(p) =>
         Flip(p).asInstanceOf[Def[A]]
-    case Reflect(Bernouilli(p, n), u, es) =>
-        reflectMirrored(Reflect(Bernouilli(p, n), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
-    case Bernouilli(p, n) =>
-        Bernouilli(p, n).asInstanceOf[Def[A]]
+    case Reflect(Bernoulli(p, n), u, es) =>
+        reflectMirrored(Reflect(Bernoulli(p, n), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
+    case Bernoulli(p, n) =>
+        Bernoulli(p, n).asInstanceOf[Def[A]]
     case Reflect(RandIfThenElse(c,a,b), u, es) =>
         reflectMirrored(Reflect(RandIfThenElse(f(c),f(a),f(b)), mapOver(f,u), f(es)))(mtype(manifest[A])).asInstanceOf[Exp[A]]
     case RandIfThenElse(c,a,b) =>
@@ -215,7 +215,7 @@ trait ScalaGenDeepBase extends ScalaGenEffect {
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Flip(p) => emitValDef(sym, "(flip(" + p + "))")
-    case Bernouilli(p, n) => emitValDef(sym, "(bernouilli(" + p + ", " + n + "))")
+    case Bernoulli(p, n) => emitValDef(sym, "(bernoulli(" + p + ", " + n + "))")
     case Always(e) => emitValDef(sym, "(always(" + quote(e) + "))")
     case PP(e) => emitValDef(sym, "(pp(" + quote(e) + "))")
     case RandIfThenElse(c,a,b) =>
@@ -307,7 +307,7 @@ object TestDeep extends App with DeepLang {
   println(fc5())
 
   val f6 = (_: Rep[Unit]) => {
-    val sum = bernouilli(0.5, 10)
+    val sum = bernoulli(0.5, 10)
     val allheads = sum === always(unit(10))
     pp(allheads)
   }
@@ -324,7 +324,7 @@ object TestDeep extends App with DeepLang {
   println(fc7())
 
   val f8 = (_: Rep[Unit]) => {
-    val sum = bernouilli(0.5, 10)
+    val sum = bernoulli(0.5, 10)
     val allheads = sum === always(unit(5))
     pp(allheads)
   }
