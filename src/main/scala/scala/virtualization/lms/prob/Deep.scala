@@ -1,6 +1,7 @@
 package scala.virtualization.lms.prob
 
 import scala.virtualization.lms.common._
+import scala.reflect.SourceContext
 
 trait ProbIntf {
   type Prob = Double
@@ -146,6 +147,48 @@ trait DeepBaseExp extends DeepBase with EffectExp {
   override def infix_&&(x: Rep[Rand[Boolean]], y: Rep[Rand[Boolean]]): Rep[Rand[Boolean]] = RandAnd(x, y)
   override def infix_===[A](x: Rep[Rand[A]], y: Rep[Rand[A]]): Rep[Rand[Boolean]] = RandEq(x, y)
   override def infix_+[T:Numeric:Manifest](x: Rep[Rand[T]], y: Rep[Rand[T]]): Rep[Rand[T]] = RandPlus(x, y)
+
+  override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Def[A] = e match {
+    case RandIfThenElse(c,a,b) => RandIfThenElse(f(c),f(a),f(b)).asInstanceOf[Def[A]]
+    case _ => super.mirrorDef(e,f)
+  }
+  override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
+    case Reflect(RandIfThenElse(c,a,b), u, es) =>
+      if (f.hasContext)
+        __ifThenElse(f(c),f.reflectBlock(a),f.reflectBlock(b)).asInstanceOf[Exp[A]]
+      else
+        reflectMirrored(Reflect(RandIfThenElse(f(c),f(a),f(b)).asInstanceOf[Def[A]], mapOver(f,u), f(es)))(mtype(manifest[A]))
+    case RandIfThenElse(c,a,b) =>
+      if (f.hasContext)
+        __ifThenElse(f(c),f.reflectBlock(a),f.reflectBlock(b)).asInstanceOf[Exp[A]]
+      else
+        RandIfThenElse(f(c),f(a),f(b)).asInstanceOf[Def[A]] // FIXME: should apply pattern rewrites (ie call smart constructor)
+    case _ => super.mirror(e,f)
+  }
+  override def aliasSyms(e: Any): List[Sym[Any]] = e match {
+    case RandIfThenElse(c,a,b) => syms(a):::syms(b)
+    case _ => super.aliasSyms(e)
+  }
+  override def containSyms(e: Any): List[Sym[Any]] = e match {
+    case RandIfThenElse(c,a,b) => Nil
+    case _ => super.containSyms(e)
+  }
+  override def extractSyms(e: Any): List[Sym[Any]] = e match {
+    case RandIfThenElse(c,a,b) => Nil
+    case _ => super.extractSyms(e)
+  }
+  override def copySyms(e: Any): List[Sym[Any]] = e match {
+    case RandIfThenElse(c,a,b) => Nil // could return a,b but implied by aliasSyms
+    case _ => super.copySyms(e)
+  }
+  override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
+    case RandIfThenElse(c, t, e) => freqNormal(c) ++ freqCold(t) ++ freqCold(e)
+    case _ => super.symsFreq(e)
+  }
+  override def boundSyms(e: Any): List[Sym[Any]] = e match {
+    case RandIfThenElse(c, t, e) => effectSyms(t):::effectSyms(e)
+    case _ => super.boundSyms(e)
+  }
 }
 
 trait ScalaGenDeepBase extends ScalaGenEffect {
