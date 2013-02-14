@@ -254,18 +254,26 @@ trait ScalaGenDeepLang extends ScalaGenDeepBase/* with ScalaGenIfThenElse with S
   val IR: DeepLangExp
 }
 
-trait ProbTransformer extends RecursiveTransformer {
+trait ProbTransformer extends ForwardTransformer {
   val IR: DeepLangExp
   import IR._
 
-  override def run[A:Manifest](body: Block[A]): Block[A] = {
+  def run[A:Manifest](body: Block[A]): Block[A] = {
+    /*
+      bernoulliRewrites = 0
+      bernoulliAdditions = 0
+      littleThings = 0
+      buildDefUse(body)
+      val r = transformBlock(body)
+      printSummary()
+      r*/
     var r: Block[A] = body
     do {
       bernoulliRewrites = 0
       bernoulliAdditions = 0
       littleThings = 0
       buildDefUse(r)
-      r = super.run(r)
+      r = super.transformBlock(r)
       printSummary()
     } while (bernoulliRewrites > 0 || bernoulliAdditions > 0 || littleThings > 0)
     r
@@ -301,19 +309,18 @@ trait ProbTransformer extends RecursiveTransformer {
     println("Little Things: " + littleThings)
   }
 
-  override def transformDef[A](lhs: Sym[A], rhs: Def[A]) = {
-    rhs match {
+  override def transformStm(stm: Stm): Exp[Any] = stm match {
+    case TP(lhs, rhs) => rhs match {
       case Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), u, es) if defUse(lhs)==1 && defUse(f)==1 =>
         bernoulliRewrites += 1
-        Some(() => Reflect(Bernoulli(p, 1).asInstanceOf[Def[A]], Alloc(), Nil))
+        reflectEffect(Bernoulli(p, 1)/*.asInstanceOf[Def[A]]*/, Alloc())(mtype(lhs.tp), implicitly[SourceContext])
       case Reflect(RandPlus(sx@Def(Reflect(Bernoulli(p1, n1), u1, es1)), sy@Def(Reflect(Bernoulli(p2, n2), u2, es2))), u, es) if defUse(lhs)==1 && defUse(sx)==1 && defUse(sy)==1 && p1==p2 =>
         bernoulliAdditions += 1
-        Some(() => Reflect(Bernoulli(p1, n1+n2).asInstanceOf[Def[A]], Alloc(), Nil))
+        reflectEffect(Bernoulli(p1, n1+n2)/*.asInstanceOf[Def[A]]*/, Alloc())(mtype(lhs.tp), implicitly[SourceContext])
       case RandPlus(x@Def(Always(Const(0))), sy@Def(y)) =>
         littleThings += 1
-        Some(() => y.asInstanceOf[Def[A]])
-      case _ =>
-        None
+        sy/*.asInstanceOf[Exp[A]]*/
+      case _ => super.transformStm(stm)
     }
   }
 }
