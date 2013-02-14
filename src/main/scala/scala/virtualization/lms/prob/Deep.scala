@@ -259,21 +259,18 @@ trait ProbTransformer extends RecursiveTransformer {
   import IR._
 
   override def run[A:Manifest](body: Block[A]): Block[A] = {
-    var r: Block[A] = null
+    var r: Block[A] = body
     var prevBernoulliRewrites = 0
     var prevBernoulliAdditions = 0
     var prevLittleThings = 0
     do {
-      prevBernoulliRewrites = bernoulliRewrites
-      prevBernoulliAdditions = bernoulliAdditions
-      prevLittleThings = littleThings
       bernoulliRewrites = 0
       bernoulliAdditions = 0
       littleThings = 0
-      buildDefUse(body)
-      r = super.run(body)
+      buildDefUse(r)
+      r = super.run(r)
       printSummary()
-    } while (bernoulliRewrites > prevBernoulliRewrites || bernoulliAdditions > prevBernoulliAdditions || littleThings > prevLittleThings)
+    } while (bernoulliRewrites > 0 || bernoulliAdditions > 0 || littleThings > 0)
     r
   }
 
