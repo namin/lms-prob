@@ -301,7 +301,6 @@ trait ProbTransformer extends RecursiveTransformer {
     println("Little Things: " + littleThings)
   }
 
-  def instable = (bernoulliRewrites + bernoulliAdditions + littleThings) > 0
   override def transformDef[A](lhs: Sym[A], rhs: Def[A]) = {
     rhs match {
       case Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), u, es) if defUse(lhs)==1 && defUse(f)==1 =>
