@@ -306,13 +306,13 @@ trait ProbTransformer extends RecursiveTransformer {
       case Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), u, es) if defUse(lhs)==1 && defUse(f)==1 =>
         bernoulliRewrites += 1
         Some(() => Reflect(Bernoulli(p, 1).asInstanceOf[Def[A]], mapOverThis(u), this.apply(es)))
-      case RandPlus(Def(x), Def(y)) =>
-        println("//" + x + "+" + y)
-        //bernoulliAdditions += 1
-        None
+      case Reflect(RandPlus(sx@Def(Reflect(Bernoulli(p1, n1), u1, es1)), sy@Def(Reflect(Bernoulli(p2, n2), u2, es2))), u, es) if defUse(lhs)==1 && defUse(sx)==1 && defUse(sy)==1 && p1==p2=>
+        bernoulliAdditions += 1
+        Some(() => Reflect(Bernoulli(p1, n1+n2).asInstanceOf[Def[A]], mapOverThis(u), this.apply(es)))
       //case RandPlus(x@Def(Always(Const(0))), sy@Def(y)) => littleThings += 1; Some(() => y.asInstanceOf[Def[A]])
       //case RandPlus(sx@Def(x), y@Def(Always(Const(0)))) => littleThings += 1; Some(() => x.asInstanceOf[Def[A]])
-      case _ => None
+      case _ =>
+        None
     }
   }
 }
@@ -422,4 +422,12 @@ object TestDeep extends App with DeepLang {
   }
   val fc8 = compile(f8)
   println(fc8())
+
+  val f9 = (_: Rep[Unit]) => {
+    val sum = bernoulli(0.5, 5) + bernoulli(0.5, 5)
+    val allheads = sum === always(unit(5))
+    pp(allheads)
+  }
+  val fc9 = compile(f9)
+  println(fc9())
 }
