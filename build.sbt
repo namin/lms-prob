@@ -8,7 +8,7 @@ scalaOrganization := "org.scala-lang.virtualized"
 
 scalaVersion := "2.10.0"
 
-scalaHome := Some(file(Path.userHome + "/code/virt/scala-namin-patmat/build/pack"))
+//scalaHome := Some(file(Path.userHome + "/code/virt/scala-namin-patmat/build/pack"))
 
 //--- Dependencies
 
