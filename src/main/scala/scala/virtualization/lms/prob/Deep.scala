@@ -260,9 +260,6 @@ trait ProbTransformer extends RecursiveTransformer {
 
   override def run[A:Manifest](body: Block[A]): Block[A] = {
     var r: Block[A] = body
-    var prevBernoulliRewrites = 0
-    var prevBernoulliAdditions = 0
-    var prevLittleThings = 0
     do {
       bernoulliRewrites = 0
       bernoulliAdditions = 0
