@@ -290,17 +290,21 @@ trait ProbTransformer extends RecursiveTransformer {
     println("Little Things: " + littleThings)
   }
 
+  def mapOverThis(u: Summary) = {
+    u.copy(mayRead = onlySyms(u.mayRead), mstRead = onlySyms(u.mstRead),
+      mayWrite = onlySyms(u.mayWrite), mstWrite = onlySyms(u.mstWrite))
+  }
+
+  def instable = (bernoulliRewrites + bernoulliAdditions + littleThings) > 0
   override def transformDef[A](lhs: Sym[A], rhs: Def[A]) = {
     rhs match {
-      case Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), u, es) if defUse(lhs) < 2 && defUse(f) < 2 =>
+      case Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), u, es) if defUse(lhs)==1 && defUse(f)==1 =>
         decUse(f)
         bernoulliRewrites += 1
-        Some(() => Reflect(Bernoulli(p, 1).asInstanceOf[Def[A]], u, es))
-      case RandPlus(x, y@Def(Reflect(Bernoulli(p2, n2), u2, es2))) =>
-        bernoulliAdditions += 1
-        None
-      case RandPlus(x@Def(Reflect(Bernoulli(p1, n1), u1, es1)), y@Def(Reflect(Bernoulli(p2, n2), u2, es2))) =>
-        bernoulliAdditions += 1
+        Some(() => Reflect(Bernoulli(p, 1).asInstanceOf[Def[A]], mapOverThis(u), this.apply(es)))
+      case RandPlus(Def(x), Def(y)) =>
+        println("//" + x + "+" + y)
+        //bernoulliAdditions += 1
         None
       //case RandPlus(x@Def(Always(Const(0))), sy@Def(y)) => littleThings += 1; Some(() => y.asInstanceOf[Def[A]])
       //case RandPlus(sx@Def(x), y@Def(Always(Const(0)))) => littleThings += 1; Some(() => x.asInstanceOf[Def[A]])
@@ -337,15 +341,14 @@ trait DeepLang extends DeepLangExp with CompileScala { q =>
 
     override def emitSource[T : Manifest, R : Manifest](f: Exp[T] => Exp[R], className: String, stream: PrintWriter, obj: Option[String]): List[(Sym[Any], Any)] = {
       val s = fresh[T]
-      val body = reifyBlock(f(s))
+      var body = reifyBlock(f(s))
       val trans = new ProbTransformer {
 	val IR: q.type = q
       }
       trans.buildDefUse(body)
-      val transBody = trans.transformBlock(body)
+      body = trans.transformBlock(body)
       trans.printSummary()
-      //defUseMap = trans.defUseMap
-      emitSource(List(s), transBody, className, stream, obj)
+      emitSource(List(s), body, className, stream, obj)
     }
 
   }
