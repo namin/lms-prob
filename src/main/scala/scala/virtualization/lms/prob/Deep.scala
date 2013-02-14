@@ -259,9 +259,21 @@ trait ProbTransformer extends RecursiveTransformer {
   import IR._
 
   override def run[A:Manifest](body: Block[A]): Block[A] = {
-    buildDefUse(body)
-    val r = super.run(body)
-    printSummary()
+    var r: Block[A] = null
+    var prevBernoulliRewrites = 0
+    var prevBernoulliAdditions = 0
+    var prevLittleThings = 0
+    do {
+      prevBernoulliRewrites = bernoulliRewrites
+      prevBernoulliAdditions = bernoulliAdditions
+      prevLittleThings = littleThings
+      bernoulliRewrites = 0
+      bernoulliAdditions = 0
+      littleThings = 0
+      buildDefUse(body)
+      r = super.run(body)
+      printSummary()
+    } while (bernoulliRewrites > prevBernoulliRewrites || bernoulliAdditions > prevBernoulliAdditions || littleThings > prevLittleThings)
     r
   }
 
@@ -295,22 +307,18 @@ trait ProbTransformer extends RecursiveTransformer {
     println("Little Things: " + littleThings)
   }
 
-  def mapOverThis(u: Summary) = {
-    u.copy(mayRead = onlySyms(u.mayRead), mstRead = onlySyms(u.mstRead),
-      mayWrite = onlySyms(u.mayWrite), mstWrite = onlySyms(u.mstWrite))
-  }
-
   def instable = (bernoulliRewrites + bernoulliAdditions + littleThings) > 0
   override def transformDef[A](lhs: Sym[A], rhs: Def[A]) = {
     rhs match {
       case Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), u, es) if defUse(lhs)==1 && defUse(f)==1 =>
         bernoulliRewrites += 1
-        Some(() => Reflect(Bernoulli(p, 1).asInstanceOf[Def[A]], mapOverThis(u), this.apply(es)))
-      case Reflect(RandPlus(sx@Def(Reflect(Bernoulli(p1, n1), u1, es1)), sy@Def(Reflect(Bernoulli(p2, n2), u2, es2))), u, es) if defUse(lhs)==1 && defUse(sx)==1 && defUse(sy)==1 && p1==p2=>
+        Some(() => Reflect(Bernoulli(p, 1).asInstanceOf[Def[A]], Alloc(), Nil))
+      case Reflect(RandPlus(sx@Def(Reflect(Bernoulli(p1, n1), u1, es1)), sy@Def(Reflect(Bernoulli(p2, n2), u2, es2))), u, es) if defUse(lhs)==1 && defUse(sx)==1 && defUse(sy)==1 && p1==p2 =>
         bernoulliAdditions += 1
-        Some(() => Reflect(Bernoulli(p1, n1+n2).asInstanceOf[Def[A]], mapOverThis(u), this.apply(es)))
-      //case RandPlus(x@Def(Always(Const(0))), sy@Def(y)) => littleThings += 1; Some(() => y.asInstanceOf[Def[A]])
-      //case RandPlus(sx@Def(x), y@Def(Always(Const(0)))) => littleThings += 1; Some(() => x.asInstanceOf[Def[A]])
+        Some(() => Reflect(Bernoulli(p1, n1+n2).asInstanceOf[Def[A]], Alloc(), Nil))
+      case RandPlus(x@Def(Always(Const(0))), sy@Def(y)) =>
+        littleThings += 1
+        Some(() => y.asInstanceOf[Def[A]])
       case _ =>
         None
     }
@@ -347,11 +355,6 @@ trait DeepLang extends DeepLangExp with CompileScala { q =>
       val trans = new ProbTransformer {
 	val IR: q.type = q
       }
-      println("1")
-      body = trans.run(body)
-      println("2")
-      body = trans.run(body)
-      println("3")
       body = trans.run(body)
       trans.buildDefUse(body)
       defUseMap = trans.defUseMap
