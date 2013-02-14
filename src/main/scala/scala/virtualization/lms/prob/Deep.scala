@@ -222,15 +222,15 @@ trait ScalaGenDeepBase extends ScalaGenEffect {
   val IR: DeepBaseExp
   import IR._
 
-  /*def emitSym(sym: Sym[_]): Boolean*/
+  def emitSym(sym: Sym[_]): Boolean
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Flip(p) => emitValDef(sym, "(flip(" + p + "))")
     case Bernoulli(p, n) => emitValDef(sym, "(bernoulli(" + p + ", " + n + "))")
     case Always(e) => emitValDef(sym, "(always(" + quote(e) + "))")
     case PP(e) => emitValDef(sym, "(pp(" + quote(e) + "))")
-    case RandIfThenElse(c,a,b) =>  /*(emitSym(sym)) match {
-      case true =>*/
+    case RandIfThenElse(c,a,b) =>  (emitSym(sym)) match {
+      case true =>
       stream.println("val " + quote(sym) + " = " + quote(c) + ".flatMap{ c => c match {")
       stream.println("case true =>")
       emitBlock(a)
@@ -239,8 +239,8 @@ trait ScalaGenDeepBase extends ScalaGenEffect {
       emitBlock(b)
       stream.println(quote(getBlockResult(b)))
       stream.println("}}")
-      /*case false => ()
-    }*/
+      case false => ()
+    }
     case RandAnd(x, y) => emitValDef(sym, quote(x) + " && " + quote(y))
     case RandEq(x, y) => emitValDef(sym, quote(x) + " === " + quote(y))
     case RandPlus(x, y) => emitValDef(sym, quote(x) + " + " + quote(y))
@@ -268,9 +268,7 @@ trait ProbTransformer extends RecursiveTransformer {
   val defUseMap : scala.collection.mutable.Map[Sym[_], Int] = new scala.collection.mutable.HashMap
   def addDefUse(sym: Sym[_]) = defUseMap.update(sym, defUseMap.getOrElse(sym, 0) + 1)
   def defUse(sym: Sym[_]): Int = defUseMap.getOrElse(sym, 0)
-  def decUse(sym: Sym[_]) { defUseMap.update(sym, defUse(sym)-1) }
   def defUse(e: Exp[_]): Int = defUse(e.asInstanceOf[Sym[_]])
-  def decUse(e: Exp[_]) { decUse(e.asInstanceOf[Sym[_]]) }
 
   def buildDefUse(body: Block[Any]): Unit = {
     defUseMap.clear()
@@ -306,7 +304,6 @@ trait ProbTransformer extends RecursiveTransformer {
   override def transformDef[A](lhs: Sym[A], rhs: Def[A]) = {
     rhs match {
       case Reflect(RandIfThenElse(f@Def(Reflect(Flip(p), _, _)), a@Block(Def(Always(Const(1)))), b@Block(Def(Always(Const(0))))), u, es) if defUse(lhs)==1 && defUse(f)==1 =>
-        decUse(f)
         bernoulliRewrites += 1
         Some(() => Reflect(Bernoulli(p, 1).asInstanceOf[Def[A]], mapOverThis(u), this.apply(es)))
       case RandPlus(Def(x), Def(y)) =>
@@ -329,9 +326,8 @@ trait DeepLang extends DeepLangExp with CompileScala { q =>
       r.replace("scala.virtualization.lms.prob.DeepBaseExp$Rand", "Rand")
     }
 
-    /*
     private var defUseMap : scala.collection.mutable.Map[Sym[_], Int] = _
-    private def defUse(sym: Sym[_]): Int = defUseMap.getOrElse(sym, 1)
+    private def defUse(sym: Sym[_]): Int = defUseMap.getOrElse(sym, 0)
     def emitSym(sym: Sym[_]): Boolean = {
       sym match {
 	case _ if (defUse(sym) > 0) => true
@@ -344,7 +340,6 @@ trait DeepLang extends DeepLangExp with CompileScala { q =>
 	case false => ()
       }
     }
-    */
 
     override def emitSource[T : Manifest, R : Manifest](f: Exp[T] => Exp[R], className: String, stream: PrintWriter, obj: Option[String]): List[(Sym[Any], Any)] = {
       val s = fresh[T]
@@ -358,6 +353,8 @@ trait DeepLang extends DeepLangExp with CompileScala { q =>
       body = trans.run(body)
       println("3")
       body = trans.run(body)
+      trans.buildDefUse(body)
+      defUseMap = trans.defUseMap
       emitSource(List(s), body, className, stream, obj)
     }
 
