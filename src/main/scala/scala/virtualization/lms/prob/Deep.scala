@@ -258,6 +258,13 @@ trait ProbTransformer extends RecursiveTransformer {
   val IR: DeepLangExp
   import IR._
 
+  override def run[A:Manifest](body: Block[A]): Block[A] = {
+    buildDefUse(body)
+    val r = super.run(body)
+    printSummary()
+    r
+  }
+
   val defUseMap : scala.collection.mutable.Map[Sym[_], Int] = new scala.collection.mutable.HashMap
   def addDefUse(sym: Sym[_]) = defUseMap.update(sym, defUseMap.getOrElse(sym, 0) + 1)
   def defUse(sym: Sym[_]): Int = defUseMap.getOrElse(sym, 0)
@@ -345,9 +352,12 @@ trait DeepLang extends DeepLangExp with CompileScala { q =>
       val trans = new ProbTransformer {
 	val IR: q.type = q
       }
-      trans.buildDefUse(body)
-      body = trans.transformBlock(body)
-      trans.printSummary()
+      println("1")
+      body = trans.run(body)
+      println("2")
+      body = trans.run(body)
+      println("3")
+      body = trans.run(body)
       emitSource(List(s), body, className, stream, obj)
     }
 
