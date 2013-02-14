@@ -320,6 +320,8 @@ trait ProbTransformer extends RecursiveTransformer {
 }
 
 trait DeepLang extends DeepLangExp with CompileScala { q =>
+  override val showSource = true
+
   object codegen extends ScalaGenDeepLang {
     val IR: q.type = q
 
