@@ -59,9 +59,9 @@ object TestProfile extends App with EmbeddedControls {
   def __ifThenElse[T](x: Exp[Boolean], y: => Exp[T], z: => Exp[T]) = IfThenElse(x,y,z)
 
   val p = new Profile {
-    val good: Exp[Int]   = binomial(0.5, 3)
-    val health: Exp[Int] = binomial(0.5, 3)
-    val happy: Exp[Int]  = good+health
+    val good: Exp[Int]    = binomial(0.5, 3)
+    val healthy: Exp[Int] = binomial(0.5, 3)
+    val happy: Exp[Int]   = good+healthy
   }
   println(p)
   println(p.happy)
