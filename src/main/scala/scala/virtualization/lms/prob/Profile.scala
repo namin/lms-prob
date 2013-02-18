@@ -23,8 +23,7 @@ object TestProfile extends App with EmbeddedControls {
     ProfileDef(evalArgs)
   }
   private class Self[T](members: Map[String, Exp[T] => Exp[_]]) extends Exp[T] {
-    import scala.collection.mutable.{Map => MutMap}
-    private val done: MutMap[String, Exp[_]] = MutMap.empty
+    private val done = scala.collection.mutable.Map.empty[String, Exp[_]]
     def apply(member: String): Exp[_] = done.getOrElseUpdate(member, members(member)(this))
   }
   implicit class ProfileOps[U <: Profile](receiver: Exp[U]) {
