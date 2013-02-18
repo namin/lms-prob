@@ -34,18 +34,11 @@ object TestProfile extends App with EmbeddedControls {
     }
     def apply(member: String): Exp[_] = done.getOrElseUpdate(member, eval(member))
   }
-  abstract class ProfileOps {
-    def selectDynamic[T](field: String): Exp[T]
-  }
-  class SelfOps[U](receiver: Self[U]) extends ProfileOps {
-    def selectDynamic[T](field: String): Exp[T] = receiver(field).asInstanceOf[Exp[T]]
-  }
-  class ProfileOpsExp[U <: Profile](val receiver: Exp[U]) extends ProfileOps {
-    def selectDynamic[T](field: String): Exp[T] = Select(receiver, field)
-  }
-  implicit def profileOps[U <: Profile](receiver: Exp[U]): ProfileOps = receiver match {
-    case receiver: Self[_] => new SelfOps(receiver)
-    case receiver =>          new ProfileOpsExp(receiver)
+  implicit class ProfileOps[U <: Profile](receiver: Exp[U]) {
+    def selectDynamic[T](field: String): Exp[T] = receiver match {
+      case self: Self[_] => self(field).asInstanceOf[Exp[T]]
+      case _             => Select(receiver, field)
+    }
   }
 
   var id = 0
