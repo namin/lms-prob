@@ -24,15 +24,8 @@ object TestProfile extends App with EmbeddedControls {
   }
   private class Self[T](members: Map[String, Exp[T] => Exp[_]]) extends Exp[T] {
     import scala.collection.mutable.{Map => MutMap}
-    private val pending: MutMap[String, Exp[T] => Exp[_]] = MutMap(members.toSeq: _*)
     private val done: MutMap[String, Exp[_]] = MutMap.empty
-    private def eval(member: String): Exp[_] = {
-      val x = pending(member)(this)
-      pending.remove(member)
-      done.update(member, x)
-      x
-    }
-    def apply(member: String): Exp[_] = done.getOrElseUpdate(member, eval(member))
+    def apply(member: String): Exp[_] = done.getOrElseUpdate(member, members(member)(this))
   }
   implicit class ProfileOps[U <: Profile](receiver: Exp[U]) {
     def selectDynamic[T](field: String): Exp[T] = receiver match {
