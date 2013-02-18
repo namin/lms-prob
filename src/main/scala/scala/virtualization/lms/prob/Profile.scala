@@ -15,16 +15,13 @@ object TestProfile extends App with EmbeddedControls {
   case class ProfileDef[R <: Profile](fields: List[(String, Exp[_])]) extends Exp[R]
   case class Select[T, U](tgt: Exp[U], field: String) extends Exp[T]
 
-  def __new[T](oargs: (String, Boolean, Exp[T] => Exp[_])*): Exp[T] = {
-    val args = oargs.map(x => (x._1, x._3))
-    val self = new Self[T](args.toMap)
-    val argNames = args.toList.map(_._1)
-    val evalArgs = argNames.map(x => x -> self(x))
-    ProfileDef(evalArgs)
+  def __new[T](args: (String, Boolean, Exp[T] => Exp[_])*): Exp[T] = {
+    val self = new Self[T](args map{case (n, _, e) => (n -> e)} toMap)
+    ProfileDef(args map {case (n, _, _) => (n -> self(n))} toList)
   }
   private class Self[T](members: Map[String, Exp[T] => Exp[_]]) extends Exp[T] {
-    private val done = scala.collection.mutable.Map.empty[String, Exp[_]]
-    def apply(member: String): Exp[_] = done.getOrElseUpdate(member, members(member)(this))
+    private val cache = scala.collection.mutable.Map.empty[String, Exp[_]]
+    def apply(name: String): Exp[_] = cache.getOrElseUpdate(name, members(name)(this))
   }
   implicit class ProfileOps[U <: Profile](receiver: Exp[U]) {
     def selectDynamic[T](field: String): Exp[T] = receiver match {
